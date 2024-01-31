@@ -1,0 +1,1073 @@
+---
+output:
+  html_document:
+    keep_md: true
+    number_sections: true
+    toc: true
+    toc_depth: 3
+    toc_title: "Table des matières"
+  pdf_document:
+    latex_engine: xelatex
+    includes:
+      in_header: style.tex
+      before_body: titlepage.tex
+    number_sections: true
+    toc: true
+    toc_depth: 3    
+geometry:
+  - a4paper
+  - width=170mm
+  - top=25mm
+  - bottom=25mm
+  - textheight=0.8\paperheight
+fontenc: T1
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(fig.width = 12, fig.height = 6)
+
+# library imports
+library(tidyverse)
+library(car)
+
+flextable::set_flextable_defaults(
+    digits = 2,
+    decimal.mark = ",",
+    big.mark = " ",
+    na_str = "<na>"
+)
+```
+
+```{r data-import}
+data <- readxl::read_excel("celec2023.xlsx")
+data <- data %>% rename(IPC = `IPC(base100=2015)`, PIB = PIB2014)
+```
+
+\newpage
+
+<!-- --------------------------- PARTIE 1 ---------------------------  -->
+
+# Introduction
+
+Le but du présent rapport$\footnote{Ce document est généré depuis un fichier écrit en R Markdown. Le code source est disponible sur [GitHub]()}$ est de comprendre l'évolution de la consommation électrique par habitants français en fonction de plusieurs facteurs qui pourraient à premier abord l'impacter. Nous allons effectivement nous pencher sur l'influence que pourrait avoir le prix unitaire du MWh, le PIB par habitants, l'indice des prix à la consommation, l'indice de rigueur climatique (indice de température calculé à partir de la température moyenne journalière et d'une température de référence). 
+
+Afin de produire une analyse des plus cohérentes, nous allons dans un premier temps présenter un aperçu des données que nous allons traiter puis établir quelques statistiques générales accompagnées de visualisations graphiques. Par la suite, nous allons nous consacrer à l'analyse du modèle économétrique en nous souciant d'éliminer les principales sources d'erreurs auxquelles notre modèle pourrait être sujet. 
+ 
+Puis nous allons procéder à l'interprétation économique du modèle déterminé afin de comprendre si effectivement un lien de cause à effet est envisageable entre nos variables explicatives et la consommation électrique française et d'en saisir sa magnitude. Sur la base d'hypothèses que nous justifierons et d'un raisonnement économique rationnel, nous essaierons de comprendre comment ces variables interagissent entre elles et si, oui ou non, nous pouvons leur imputer une importance statistiquement valable dans l'explication de notre variable dépendante. 
+
+Pour pousser l'analyse encore un petit plus loin, nous allons aussi nous servir des données à disposition pour prévoir cette consommation d'électricité sur un horizon de trois ans. En nous basant sur l'analyse factuelle du passé, pouvons-nous anticiper l'évolution de cette consommation en partant du principe que le marché de l'électricité ne sera pas sujet à des événements extraordinaires qui viendraient fortement perturber l'une de nos variables d'intérêt ?
+
+<!-- --------------------------- PARTIE 2 ---------------------------  -->
+
+
+# Données utilisées
+
+
+## Description du jeu de données
+
+
+### Variables utilisées
+
+On dispose de données sur la consommation annuelle d'électricité en France de 1990 à 2022 (autrement dit, nous avons $n=33$ observations). Il est composé de 8 grandeurs : la grandeur cible et 7 variables :  
+
+* `Celec` : la consommation d'électricité en France (en GWh), la grandeur cible
+* `Date` : l'année de l'observation, de 1990 à 2022
+* `IPC(base100=2015)` : l'indice annuel des prix à la consommation (base 100 en 2015), renommée par la suite `IPC`
+* `PIB2014` : le produit intérieur brut (en milliards d'euros 2014), renommée par la suite `PIB`
+* `Pop1` : la population en France métropolitaine
+* `Pop2` : la population en France métropolitaine et dans les départements d'outre-mer
+* `Pelec` : le prix de l'électricité des ménages (en €/MWh)
+* `DJU` : l'indice de rigueur climatique ("DJU" pour "degrés jours unifiés", il s'agit d'un indice de température calculé à partir de la température moyenne journalière et d'une température de référence, ici 18$^\circ$C, plus d'informations sur [Wikipédia](https://fr.wikipedia.org/wiki/Degr%C3%A9_jour_unifi%C3%A9), données issues du [Ministère de la transition écologique, et de la cohésion des territoires](https://www.statistiques.developpement-durable.gouv.fr/indice-de-rigueur-degres-jours-unifies-aux-niveaux-national-regional-et-departemental)) 
+
+On peut visualiser les données à l'aide d'un tableau :
+
+```{r raw-data-overview}
+data %>%
+    mutate(Date = as.character(Date)) %>%
+    mutate_at(vars(IPC, PIB, Pelec, Celec), ~ round(., 0)) %>%
+    mutate(DJU = round(DJU, 2)) %>%
+    head(4) %>%
+    flextable::flextable() %>%
+    flextable::autofit() %>%
+    flextable::set_caption("Aperçu des données")
+```
+
+### Quelques statistiques générales
+
+On peut calculer quelques statistiques générales sur les données :
+```{r raw-data-stat-table}
+data %>%
+    gather(key = "variable", value = "value", -Date) %>%
+    group_by(variable) %>%
+    summarise(
+        mean = mean(value),
+        sd = sd(value),
+        min = min(value),
+        max = max(value)
+    ) %>%
+    mutate_at(
+        vars(mean, sd, min, max),
+        ~ ifelse(. > 100,
+            as.character(as.integer(round(., 0))),
+            as.character(signif(., 2))
+        )
+    ) %>%
+    rename(
+        Variable = variable,
+        Moyenne = mean,
+        `Ecart type` = sd,
+        Minimum = min,
+        Maximum = max
+    ) %>%
+    flextable::flextable() %>%
+    flextable::autofit() %>%
+    flextable::set_caption("Statistiques descriptives des données")
+```
+
+
+### Visualisation des données
+
+
+```{r raw-data-viz1}
+data %>%
+    ggplot(aes(x = Date, y = Celec)) +
+    geom_line() +
+    theme_classic() +
+    labs(x = "Date", y = "Celec", title = "Visualisation de Celec") +
+    theme(legend.position = "none")
+```
+
+```{r raw-data-viz2}
+data %>%
+    gather(key = "variable", value = "value", -Date, -Celec) %>%
+    ggplot(aes(x = Date, y = value, color = variable)) +
+    geom_line() +
+    theme_classic() +
+    labs(
+        x = "Date", y = "Value",
+        title = "Visualisation des variables explicatives"
+    ) +
+    facet_wrap(~variable, scales = "free_y") +
+    theme(legend.position = "none")
+``` 
+
+
+## Rupture temporelle et restriction de l'échantillon
+
+Au vu de la visualisation de la consommation d'électricité en France, on peut remarquer deux périodes distinctes : une période de croissance marquée entre 1990 et 2008, puis une période de qui semble tendanciellement décroissante entre 2008 et 2022. On peut donc tester la présence d'une rupture temporelle dans la distribution. Si cette hypothèse est vérifiée, on pourra alors estimer deux modèles distincts pour chacune des périodes.
+
+On peut tester la présence d'une rupture temporelle dans la distribution de la consommation d'électricité en France à l'aide d'un test de Chow. 
+
+```{r chow-test}
+index <- which(data$Date == 2008)
+
+chowtest <- strucchange::sctest(
+    Celec ~ Date,
+    data = data,
+    type = "Chow",
+    point = index
+)
+
+chowtest %>%
+    broom::tidy() %>%
+    mutate_at(
+        vars(statistic, p.value),
+        ~ ifelse(. > 100,
+            as.character(as.integer(round(., 0))),
+            as.character(signif(., 2))
+        )
+    ) %>%
+    select(statistic, p.value) %>%
+    rename(
+        `Statistique de test (Chow)` = statistic,
+        `p-value (Pr > F)` = p.value
+    ) %>%
+    flextable::flextable() %>%
+    flextable::colformat_num(j = 2) %>%
+    flextable::autofit() %>%
+    flextable::set_caption("Test de Chow pour la rupture de 2008")
+```
+
+La statistique de test a une valeur de `r round(chowtest$statistic, 2)` et la p-valeur associée est de `r round(chowtest$p.value, 2)`. On peut donc rejeter l'hypothèse d'absence de rupture temporelle dans la distribution de la consommation d'électricité en France.
+
+Comme notre objectif final est de pouvoir faire des prédictions à horizon 2025, on se ramène à n'estimer qu'un seul modèle pour le sous-échantillon démarrant en 2008. On peut donc supprimer les observations antérieures à 2008. 
+
+```{r data-subset}
+data <- data %>%
+    filter(Date >= 2008)
+```
+
+On n'a alors plus que `r nrow(data)` observations. 
+
+
+## Suppression *a priori* d'une variable de population
+
+On peut supprimer la variable `Pop1` car elle est redondante avec la variable `Pop2` (la population en France métropolitaine et dans les départements d'outre-mer). En effet, la population dans les départements d'outre-mer est négligeable par rapport à la population en France métropolitaine. On peut vérifier cela en calculant le ratio moyen entre les deux populations :
+  
+```{r}
+data %>%
+    summarise(
+        `ratio moyen` = round(mean(Pop1 / Pop2), 3),
+        max = round(max(Pop1 / Pop2), 3),
+        min = round(min(Pop1 / Pop2), 3)
+    ) %>%
+    flextable::flextable() %>%
+    flextable::autofit() %>%
+    flextable::set_caption("Ratio moyen entre Pop1 et Pop2")
+```
+
+Ainsi, `Pop1` correspond à un ratio moyen de d'environ `r round(mean(data$Pop1 / data$Pop2), 3)` entre 2008 et 2022, autrement dit un ratio très proche de 1 et quasi-constant. On peut donc la supprimer sans risque de perte d'information. Par la suite, on renommera `Pop2` en `Pop`.
+
+```{r pop1-deletion}
+data <- data %>%
+    select(-Pop1) %>%
+    rename(Pop = Pop2)
+```
+
+
+<!-- --------------------------- PARTIE 3 ---------------------------  -->
+
+# Estimation d'un modèle de régression linéaire
+
+## Expression du modèle
+
+
+On peut proposer un modèle fondé sur un raisonnement économique. On cherche à modéliser la consommation d'électricité *par habitant* en France. Cette consommation dépend du revenu par habitant, du prix de l'électricité et de la rigueur climatique, les valeurs monétaires devant être corrigées de l'inflation (c'est déjà le cas pour le PIB mais on utilise pour cela l'indice des prix à la consommation). On obtient ainsi le modèle suivant (on se référera à ce modèle comme modèle 1) :
+
+$$
+\ln \left( \frac{ C_{\text {élec }} }{ \text{Pop} } \right) = 
+      \beta_0 +
+      \beta_1 \ln \left( \frac{ \text{PIB} } { \text{Pop} }\right) +
+      \beta_2 \ln \left( \frac{ P_{\text {élec }}} {\text{IPC} } \right) + 
+      \beta_3 \ln (\text {DJU}) + \varepsilon
+      \hspace{1cm} \text{(modèle 1)}
+$$
+
+où : $\varepsilon \sim \mathcal{N}(0, \sigma^2)$
+
+Les coefficients $\beta_i$ ont alors une interprétation immédiate en terme d'élasticité de la consommation d'électricité par rapport aux variables explicatives (hors le terme constant $\beta_0$):
+
+* $\beta_1$ élasticité par rapport au revenu par habitant, 
+* $\beta_2$ élasticité par rapport au prix de l'électricité (en euros 2014),
+* $\beta_3$ élasticité par rapport à la rigueur climatique.
+
+Une fois le modèle estimé, on pourra facilement repasser à la consommation d'électricité totale en France :
+
+$$
+C_{\text {élec }} = \text{Pop} \times \exp \left( \beta_0 +
+      \beta_1 \ln \left( \frac{ \text{PIB} } { \text{Pop} }\right) +
+      \beta_2 \ln \left( \frac{ P_{\text {élec }}} {\text{IPC} } \right) + 
+      \beta_3 \ln (\text {DJU}) + \varepsilon \right)
+$$
+
+
+### Visualisation des nouvelles variables utilisées
+
+
+```{r}
+data %>%
+    mutate(
+        `log(Cele/Pop)` = log(Celec / Pop),
+        `log(PIB/Pop)` = log(PIB / Pop),
+        `log(Pelec/IPC)` = log(Pelec / IPC),
+        `log(DJU)` = log(DJU)
+    ) %>%
+    gather(key = "variable", value = "value", -colnames(data)) %>%
+    ggplot(aes(x = Date, y = value, color = variable)) +
+    geom_line() +
+    theme_classic() +
+    labs(
+        x = "Date", y = "Value",
+        title = "Visualisation des variables explicatives"
+    ) +
+    facet_wrap(~variable, scales = "free_y") +
+    theme(legend.position = "none")
+```
+
+## Estimation du modèle 
+
+### Modèle 1
+
+On estime le modèle 1 par la méthode des moindres carrés ordinaires (MCO). On obtient les résultats suivants :
+
+```{r}
+model1 <- lm(
+    log(Celec / Pop) ~
+        log(PIB / Pop) +
+        log(Pelec / IPC) +
+        log(DJU),
+    data = data
+)
+
+summary(model1) %>%
+    broom::tidy() %>%
+    mutate_at(
+        vars(estimate, std.error, statistic, p.value),
+        ~ ifelse(. > 100,
+            as.character(as.integer(round(., 0))),
+            as.character(signif(., 2))
+        )
+    ) %>%
+    rename(
+        Coefficient = term,
+        Estimation = estimate,
+        `Ecart type` = std.error,
+        `Statistique de test (Student t)` = statistic,
+        `p-value (Pr > |t|)` = p.value
+    ) %>%
+    mutate(Coefficient = case_when(
+        Coefficient == "(Intercept)" ~ "ß0",
+        Coefficient == "log(PIB/Pop)" ~ "ß1",
+        Coefficient == "log(Pelec/IPC)" ~ "ß2",
+        Coefficient == "log(DJU)" ~ "ß3"
+    )) %>%
+    flextable::flextable() %>%
+    flextable::colformat_num(j = 5) %>%
+    flextable::autofit()
+```
+
+
+D'après les p-valeurs des tests de Student associés aux estimateurs du modèle proposé, on peut considérer que tous les coefficients ne sont pas significativement non nuls. 
+
+En particulier, on est tenté de supprimer la variable $\frac{\text{PIB}}{\text{Pop}}$ car son coefficient $\beta_1$ est non significativement différent de 0 et la p-valeur associée est la plus élevée.
+
+**Cette proposition peut paraître assez surprenante. En effet, on pourrait penser que la consommation d'électricité par habitant augmente avec le revenu par habitant. Cependant, il faut garder à l'esprit que l'électricité, en tant que bien de consommation, est un bien de première nécessité. Ainsi, la consommation d'électricité par habitant ne dépend pas du revenu par habitant mais plutôt de la population totale. Cela semble donc cohérent de supprimer cette variable.**
+
+### Modèle 2
+
+On obtient ainsi l'expression d'un modèle plus simple qu'on appellera modèle 2 (on conserve les noms des coefficients du modèle 1) :
+
+$$
+\ln \left( \frac{ C_{\text {élec }} }{ \text{Pop} } \right) = 
+      \beta_0 +
+      \beta_2 \ln \left( \frac{ P_{\text {élec }}} {\text{IPC} } \right) + 
+      \beta_3 \ln (\text {DJU}) + \varepsilon
+        \hspace{1cm} \text{(modèle 2)}
+$$
+
+
+On obtient alors :
+
+```{r}
+model2 <- lm(
+    log(Celec / Pop) ~
+        log(Pelec / IPC) +
+        log(DJU),
+    data = data
+)
+
+
+summary(model2) %>%
+    broom::tidy() %>%
+    mutate_at(
+        vars(estimate, std.error, statistic, p.value),
+        ~ ifelse(. > 100,
+            as.character(as.integer(round(., 0))),
+            as.character(signif(., 2))
+        )
+    ) %>%
+    rename(
+        Coefficient = term,
+        Estimation = estimate,
+        `Ecart type` = std.error,
+        `Statistique de test (Student t)` = statistic,
+        `p-value (Pr > |t|)` = p.value
+    ) %>%
+    mutate(Coefficient = case_when(
+        Coefficient == "(Intercept)" ~ "ß0",
+        Coefficient == "log(Pelec/IPC)" ~ "ß2",
+        Coefficient == "log(DJU)" ~ "ß3"
+    )) %>%
+    flextable::flextable() %>%
+    flextable::colformat_num(j = 5) %>%
+    flextable::autofit() %>%
+    flextable::set_caption("Résumé du modèle 2")
+```
+
+Le modèle 2 étant un sous-modèle du modèle 1, on peut effectuer un test de Fisher pour tester la significativité globale du modèle 1 (dans R, on utilise la fonction `anova` pour effectuer ce test).
+
+La p-valeur obtenue est de `r round(anova(model1, model2)$Pr[2], 2)`. On peut donc rejeter l'hypothèse d'absence de significativité globale du modèle 1. On peut donc considérer que le modèle 1 est plus performant que le modèle 2. On peut donc conserver le modèle 1.
+
+Comme ce résultat va à l'encontre de ce qui a été dit plus haut, puisqu'il suggère qu'il faudrait en réalité conserver le modèle 1 malgré la non-significativité du coefficient $\beta_1$, on va tout de même conserver le modèle 2 pour la suite de l'analyse.
+Par la suite, les analyses seront donc effectuées conjointement pour les deux modèles. On pourra alors comparer les résultats obtenus.
+
+```{r}
+data %>%
+    mutate(Celec = Celec) %>%
+    ggplot(aes(x = Date, y = Celec)) +
+    geom_line(aes(color = "Données réelles")) +
+    geom_line(
+        data = data.frame(
+            Date = data$Date,
+            Celec = data$Pop * exp(predict(model1))
+        ),
+        aes(x = Date, y = Celec, color = "Prédictions du modèle 1")
+    ) +
+    geom_line(
+        data = data.frame(
+            Date = data$Date,
+            Celec = data$Pop * exp(predict(model2))
+        ),
+        aes(x = Date, y = Celec, color = "Prédictions du modèle 2")
+    ) +
+    scale_color_manual(values = c("Données réelles" = "black", "Prédictions du modèle 1" = "red", "Prédictions du modèle 2" = "blue")) +
+    theme_minimal() +
+    labs(x = "Année", y = "Célec", title = "Visualisation de Célec avec les modèles 1 et 2", color = "Légende") +
+    theme(
+        legend.position = c(0.8, 0.8),
+        legend.text = element_text(size = 15),
+        legend.title = element_text(size = 15),
+        plot.title = element_text(size = 20, face = "bold"),
+        axis.title = element_text(size = 15),
+        axis.text = element_text(size = 15),
+        axis.text.x = element_text(angle = 45, hjust = 1)
+    )
+```
+
+
+## Vérification des hypothèses du modèle
+
+Dans cette partie, on va effectuer des tests sur les résidus des deux modèles. 
+Pour se donner une première intuition des problèmes qu'on pourrait mettre en 
+évidence, on peut visualiser les résidus des deux modèles :
+
+```{r}
+data <- data %>%
+    mutate(
+        resid1 = resid(model1),
+        resid2 = resid(model2)
+    )
+
+data_long <- data %>%
+    select(Date, resid1, resid2) %>%
+    pivot_longer(
+        cols = c(resid1, resid2),
+        names_to = "model",
+        values_to = "resid"
+    )
+
+data_long %>%
+    ggplot(aes(x = Date, y = resid, group = model, color = model)) +
+    scale_color_manual(
+        values = c("resid1" = "red", "resid2" = "blue")
+    ) +
+    geom_line() +
+    theme_minimal() +
+    labs(
+        x = "Année", y = "Résidus",
+        title = "Visualisation des résidus des modèles 1 et 2",
+        color = "Légende"
+    ) +
+    theme(
+        legend.position = "none",
+        plot.title = element_text(size = 20, face = "bold"),
+        axis.title = element_text(size = 15),
+        axis.text = element_text(size = 15),
+        axis.text.x = element_text(angle = 45, hjust = 1)
+    )
+```
+
+### Autocorrélation
+
+Étant donné qu'on travaille avec des données temporelles, il est nécessaire de vérifier l'absence d'autocorrélation des résidus. En effet, si les résidus sont autocorrélés, les estimateurs du modèle ne sont plus efficaces et les tests de Student associés aux estimateurs ne sont plus valides.
+
+Or, la visualisation précédente semble indiquer la présence d'une autocorrélation d'ordre 1 (au moins) des résidus.
+
+On effectue donc un test de Durbin-Watson pour vérifier cela. 
+
+```{r dwtest}
+dwtest1 <- lmtest::dwtest(model1)
+dwtest2 <- lmtest::dwtest(model2)
+
+dwtest <- data.frame(
+    Modèle = c("Modèle 1", "Modèle 2"),
+    `Statistique de test (Durbin-Watson)` = c(dwtest1$statistic, dwtest2$statistic),
+    `p-value (Pr > |DW|)` = c(dwtest1$p.value, dwtest2$p.value),
+    check.names = FALSE
+) %>%
+    mutate_at(
+        vars(`Statistique de test (Durbin-Watson)`, `p-value (Pr > |DW|)`),
+        ~ ifelse(. > 100,
+            as.character(as.integer(round(., 0))),
+            as.character(signif(., 2))
+        )
+    )
+
+dwtest %>%
+    flextable::flextable() %>%
+    flextable::colformat_num(j = 3) %>%
+    flextable::autofit() %>%
+    flextable::set_caption("Test de Durbin-Watson pour l'autocorrélation d'ordre 1 des résidus")
+```
+
+Dans les deux cas, la statistique de test a une valeur inférieure à la valeur seuil pour un risque de première espèce de 5%.
+
+**On peut donc rejeter l'hypothèse d'absence d'autocorrélation d'ordre 1 des résidus et ainsi considérer que les estimateurs du modèle ne sont pas efficaces et que les tests de Student associés aux estimateurs ne sont pas valides.**
+
+
+### Hétéroscédasticité
+
+On peut également vérifier l'absence d'hétéroscédasticité des résidus pour la même raison : si les résidus sont hétéroscédastiques, les estimateurs du modèle ne sont plus efficaces et les tests de Student associés aux estimateurs ne sont plus valides.
+
+On effectue donc un test de Breusch-Pagan pour vérifier l'absence d'hétéroscédasticité des résidus. On obtient alors :
+
+```{r}
+bptest1 <- lmtest::bptest(model1)
+bptest2 <- lmtest::bptest(model2)
+
+bptest <- data.frame(
+    Modèle = c("Modèle 1", "Modèle 2"),
+    `Statistique de test (Breusch-Pagan)` = c(bptest1$statistic, bptest2$statistic),
+    `Degrés de liberté` = c(bptest1$parameter, bptest2$parameter),
+    `p-value (Pr > |BP|)` = c(bptest1$p.value, bptest2$p.value),
+    check.names = FALSE
+) %>%
+    mutate_at(
+        vars(`Statistique de test (Breusch-Pagan)`, `p-value (Pr > |BP|)`),
+        ~ ifelse(. > 100,
+            as.character(as.integer(round(., 0))),
+            as.character(signif(., 2))
+        )
+    )
+
+bptest %>%
+    flextable::flextable() %>%
+    flextable::colformat_num(j = 4) %>%
+    flextable::autofit() %>%
+    flextable::width(j = 2:4, width = 1.5) %>%
+    flextable::align(j = 4, align = "right") %>%
+    flextable::set_caption("Test de Breusch-Pagan pour l'hétéroscédasticité des résidus")
+```
+
+**Dans les deux cas, on rejette l'hypothèse d'hétéroscedasticité des résidus.** 
+
+
+### Normalité des résidus
+
+Il est important de vérifier la normalité des résidus dans le cas étudié ici. En effet, l'échantillon à notre disposition est assez petit (`r nrow(data)` observations) et il est donc nécessaire de vérifier que les résidus suivent une loi normale.
+
+Pour ce faire, on peut commencer par se donner de l'intuition avec un QQ-plot des résidus :
+
+```{r}
+data_long %>%
+    ggplot(aes(sample = resid)) +
+    geom_qq() +
+    geom_qq_line(col = "red") +
+    facet_wrap(~model, scales = "free") +
+    facet_grid(. ~ model,
+        labeller = labeller(model = c(
+            "resid1" = "Modèle 1",
+            "resid2" = "Modèle 2"
+        ))
+    ) +
+    theme_classic() +
+    labs(
+        x = "Quantiles théoriques (loi normale)",
+        y = "Quantiles empiriques",
+        title = "Vérification de la normalité des résidus"
+    )
+```
+
+Sans surprise, les résidus ne semblent pas suivre une loi normale. Ce n'est pas surprenant car on ne dispose que de peu de données.
+
+Vérifions à présent cela pour nos deux modèles à l'aide du test de Kolmorogov-Smirnov :
+
+```{r}
+ks_test <- data %>%
+    select(resid1, resid2) %>%
+    gather(key = "model", value = "resid") %>%
+    group_by(model) %>%
+    summarise(
+        D = ks.test(resid, "pnorm")$statistic,
+        p_value = ks.test(resid, "pnorm")$p.value
+    ) %>%
+    mutate_at(
+        vars(D, p_value),
+        ~ ifelse(. > 100,
+            as.character(as.integer(round(., 0))),
+            as.character(signif(., 2))
+        )
+    ) %>%
+    rename(
+        Modèle = model,
+        `Statistique de test (Kolmogorov-Smirnov)` = D,
+        `p-value (Pr > |KS|)` = p_value
+    ) %>%
+    # rename "resid1" to "Modèle 1", "resid2" to "Modèle 2"
+    mutate(Modèle = case_when(
+        Modèle == "resid1" ~ "Modèle 1",
+        Modèle == "resid2" ~ "Modèle 2"
+    ))
+
+ks_test %>%
+    flextable::flextable() %>%
+    flextable::colformat_num(j = 3) %>%
+    flextable::autofit() %>%
+    flextable::set_caption("Test de Kolmogorov-Smirnov pour la normalité des résidus")
+```
+
+Les p-valeurs des tests de Kolmogorov-Smirnov associés aux résidus des deux modèles sont faibles, ce qui nous impose en fait de rejeter l'hypothèse de normalité des résidus (toujours avec un risque de première espèce de 5%).
+
+**On peut donc considérer que les résidus ne suivent pas une loi normale.**
+
+
+On peut néanmoins se rassurer en constatant que les moyennes des résidus sont très proches de 0 : 
+
+- `r format(mean(data$resid1), scientific = TRUE, decimal.mark = ",", digits = 2)` pour le modèle 1
+- `r format(mean(data$resid2), scientific = TRUE, decimal.mark = ",", digits = 2)` pour le modèle 2
+
+**On peut donc considérer que les estimateurs du modèle sont non biaisés et que la normalité des résidus n'est pas un problème majeur.**
+
+## Multicolinéarité
+
+L'échec des deux modèles à passer le test d'autocorrélation (et de normalité) des résidus peut s'expliquer par la présence de multicolinéarité entre les variables explicatives. En effet, on peut remarquer que les variables utilisées dans les deux modèles sont fortement corrélées entre elles. On peut visualiser cela à l'aide d'une matrice de corrélation des variables explicatives :
+
+```{r}
+correlation <- data %>%
+    summarise(
+        `log(PIB/Pop)` = log(PIB / Pop),
+        `log(Pelec/IPC)` = log(Pelec / IPC),
+        `log(DJU)` = log(DJU)
+    ) %>%
+    mutate_at(
+        vars(`log(PIB/Pop)`, `log(Pelec/IPC)`, `log(DJU)`),
+        ~ round(., 2)
+    ) %>%
+    cor()
+
+correlation[upper.tri(correlation)] <- NA
+diag(correlation) <- NA
+
+correlation %>%
+    as.data.frame() %>%
+    rownames_to_column("Variables") %>%
+    flextable::flextable() %>%
+    flextable::colformat_double(na_str = "") %>%
+    flextable::bg(
+        j = 2:4,
+        bg = scales::col_numeric(
+            # palette = "viridis",
+            palette = colorspace::diverging_hcl(palette = "Blue-Red", n=10),
+            domain = c(-1, 1)
+        )
+    ) %>%
+    flextable::autofit() %>%
+    flextable::set_caption("Matrice de corrélation des variables explicatives")
+```
+
+## Amélioration du modèle 
+
+On l'a vu, on est à la fois en présence de multicolinéarités et de résidus autocorrélés. 
+
+On choisit donc une solution qui permet de résoudre ces deux problèmes$\footnote{qui est en tout cas indiquée en cas de multicolinéarité et qui peut probablement aider à résoudre, par suite, l'autocorrélation observée}$ : la régression ridge.
+
+On estime ainsi un modèle de régression ridge pour chacun des deux modèles. Dans R, on utilise pour cela la fonction `glmnet` du package `glmnet`. Comme on a besoin d'obtenir un coefficient optimal de pénalisation, on utilise la fonction `cv.glmnet` qui permet d'obtenir ce coefficient optimal par validation croisée (*K-fold cross-validation*).
+
+```{r ridge-models}
+data_transformed <- data %>%
+    mutate(
+        log_PIB_Pop = log(PIB / Pop),
+        log_Pelec_IPC = log(Pelec / IPC),
+        log_DJU = log(DJU),
+        log_Celec_Pop = log(Celec / Pop)
+    )
+
+ridge_model1 <- glmnet::cv.glmnet(
+    x = data_transformed %>%
+        select(
+            log_PIB_Pop,
+            log_Pelec_IPC,
+            log_DJU
+        ) %>% as.matrix(),
+    y = data_transformed %>%
+        pull(log_Celec_Pop),
+    alpha = 0,
+    standardize = TRUE,
+    nfolds = 5
+)
+
+ridge_model2 <- glmnet::cv.glmnet(
+    x = data_transformed %>%
+        select(
+            log_Pelec_IPC,
+            log_DJU
+        ) %>% as.matrix(),
+    y = data_transformed %>%
+        pull(log_Celec_Pop),
+    alpha = 0,
+    standardize = TRUE,
+    nfolds = 5
+)
+```
+
+Cette analyse nous permet d'obtenir les coefficients optimaux de pénalisation pour chacun des deux modèles :
+
+- `r format(ridge_model1$lambda.min, scientific = TRUE, digits = 2)` pour le modèle 1
+- `r format(ridge_model2$lambda.min, scientific = TRUE, digits = 2)` pour le modèle 2
+
+On peut donc estimer les deux modèles ridge correspondants :
+
+```{r ridge-models-estimation}
+ridge_model1_estimated <- glmnet::glmnet(
+    x = data_transformed %>%
+        select(
+            log_PIB_Pop,
+            log_Pelec_IPC,
+            log_DJU
+        ) %>% as.matrix(),
+    y = data_transformed %>%
+        pull(log_Celec_Pop),
+    alpha = 0,
+    standardize = TRUE,
+    lambda = ridge_model1$lambda.min
+)
+
+ridge_model2_estimated <- glmnet::glmnet(
+    x = data_transformed %>%
+        select(
+            log_Pelec_IPC,
+            log_DJU
+        ) %>% as.matrix(),
+    y = data_transformed %>%
+        pull(log_Celec_Pop),
+    alpha = 0,
+    standardize = TRUE,
+    lambda = ridge_model2$lambda.min
+)
+
+coefs_ridge1 <- coef(ridge_model1_estimated)
+coefs_ridge2 <- coef(ridge_model2_estimated)
+
+# computation of R-squared
+y_predicted_1 <- predict(ridge_model1_estimated, newx = data_transformed %>%
+    select(
+        log_PIB_Pop,
+        log_Pelec_IPC,
+        log_DJU
+    ) %>% as.matrix())
+y_predicted_2 <- predict(ridge_model2_estimated, newx = data_transformed %>%
+    select(
+        log_Pelec_IPC,
+        log_DJU
+    ) %>% as.matrix())
+
+R2_1 <- 1 - sum((data_transformed$log_Celec_Pop - y_predicted_1)^2) / sum((data_transformed$log_Celec_Pop - mean(data_transformed$log_Celec_Pop))^2)
+R2_2 <- 1 - sum((data_transformed$log_Celec_Pop - y_predicted_2)^2) / sum((data_transformed$log_Celec_Pop - mean(data_transformed$log_Celec_Pop))^2)
+
+
+ridge_models_estimated <- data.frame(
+    Modèle = c("Modèle 1", "Modèle 2"),
+    `(Intercept)` = c(coefs_ridge1[1], coefs_ridge2[1]),
+    `log(PIB/Pop)` = c(coefs_ridge1[2], NA),
+    `log(Pelec/IPC)` = c(coefs_ridge1[3], coefs_ridge2[2]),
+    `log(DJU)` = c(coefs_ridge1[4], coefs_ridge2[3]),
+    `R² ajusté` = c(R2_1, R2_2),
+    check.names = FALSE
+) %>%
+    mutate_at(
+        vars(`(Intercept)`, `log(PIB/Pop)`, `log(Pelec/IPC)`, `log(DJU)`, `R² ajusté`),
+        ~ ifelse(. > 100,
+            as.character(as.integer(round(., 0))),
+            as.character(signif(., 2))
+        )
+    ) %>%
+    rename(
+        ß0 = `(Intercept)`,
+        ß1 = `log(PIB/Pop)`,
+        ß2 = `log(Pelec/IPC)`,
+        ß3 = `log(DJU)`
+    ) %>%
+    mutate(Modèle = case_when(
+        Modèle == "Modèle 1" ~ "Modèle 1 (ridge)",
+        Modèle == "Modèle 2" ~ "Modèle 2 (ridge)"
+    )) %>%
+    tidyr::replace_na(list(ß0 = "", ß1 = "", ß2 = "", ß3 = "")) %>%
+    flextable::flextable() %>%
+    flextable::colformat_num(j = 2:5, na_str = "") %>%
+    flextable::autofit() %>%
+    flextable::set_caption("Estimation des modèles ridge")
+
+ridge_models_estimated
+```
+
+## Choix du modèle utilisé pour les prévisions
+
+### Critère de qualité
+On peut juger de la qualité des différents modèles en s'appuyant sur l'erreur quadratique moyenne (RMSE) :
+
+```{r rmse}
+rmse <- data.frame(
+    Modèle = c("Modèle 1", "Modèle 2", "Modèle 1 (ridge)", "Modèle 2 (ridge)"),
+    RMSE = c(
+        sqrt(mean((data_transformed$log_Celec_Pop - predict(model1))^2)),
+        sqrt(mean((data_transformed$log_Celec_Pop - predict(model2))^2)),
+        sqrt(mean((data_transformed$log_Celec_Pop - predict(ridge_model1_estimated, newx = data_transformed %>%
+            select(
+                log_PIB_Pop,
+                log_Pelec_IPC,
+                log_DJU
+            ) %>% as.matrix()))^2)),
+        sqrt(mean((data_transformed$log_Celec_Pop - predict(ridge_model2_estimated, newx = data_transformed %>%
+            select(
+                log_Pelec_IPC,
+                log_DJU
+            ) %>% as.matrix()))^2))
+    ),
+    check.names = FALSE
+) %>%
+    mutate_at(
+        vars(RMSE),
+        ~ ifelse(. > 100,
+            as.character(as.integer(round(., 0))),
+            as.character(signif(., 4))
+        )
+    ) %>%
+    flextable::flextable() %>%
+    flextable::colformat_num(j = 2) %>%
+    flextable::autofit() %>%
+    flextable::set_caption("Erreur quadratique moyenne (RMSE) des différents modèles")
+
+rmse
+```
+
+Ce critère semble placer tous les modèles sur à peu près le même niveau de qualité. 
+
+Toutefois, comme les modèles estimés par MCO ne vérifient pas toutes les hypothèses du modèle linéaire, on peut considérer que les modèles estimés par régression ridge sont de meilleure qualité.
+
+Ensuite, pour choisir entre les deux modèles estimés par régression ridge, on adopte un raisonnement de parsimonie : on choisit le modèle le plus simple, c'est-à-dire celui qui a le moins de variables explicatives. **Ainsi, on choisit le modèle 2 (ridge) comme modèle final.**
+
+### Interprétation économique des coefficients du modèle final
+
+En se penchant sur l'interprétation économique du coefficient B2, on peut tout de suite remarquer que la relation entre le prix de l'électricité et sa consommation. Cela va de soit puisque plus un bien est cher, plus sa consommation diminuera. La magnitude de la relation, exprimée sous forme d'élasticité par notre modèle logarithmique nous indique que si le prix du MWh augmente de 1%, sa consommation diminuera de 0,21%. Nous avons une p-valeur très proche de zéro ce qui nous mènerait à penser que notre estimateur est statistiquement significatif. En revanche, nous avons vu que toutes les hypothèses nécessaires à garantir la validité de notre modèle ne sont pas vérifiées et, par conséquent, nous ne pouvons pas nous projeter dans des affirmations formelles.
+
+Le coefficient B3 quant à lui est positif ce qui signifierait en effet que si l'indice de rigueur climatique augmente, la consommation électrique française ferait de même. En fait, comme cet indice représente la différence entre la température moyenne et une température de base fixe (18 degrés), alors plus la température diminue, plus il aura tendance à diminuer. Par conséquent on comprend mieux son impact potentiel dans notre modèle. Il nous apprend que si cet indice augmente de 1% alors, la consommation électrique augmentera de 0,21%. A nouveau sa p-valeur est proche de zéro ce qui nous tenterait d'affirmer formellement que notre estimateur est significativement différent de zéro mais comme mentionné ci-dessus, les hypothèses nécessaires ne sont pas vérifiées.
+
+
+<!-- --------------------------- PARTIE 4 ---------------------------  -->
+
+
+# Prévisions à horizon 2025
+
+
+## Obtention de valeurs pour les variables explicatives
+
+Pour faire des prévisions à horizon 2025, il faut obtenir des valeurs pour les variables explicatives du modèle. Plusieurs possibilités s'offrent à nous :
+
+- chercher des données pour les années 2023, 2024 et 2025 à partir de sources fiables (par exemple, les prévisions de l'INSEE ou de l'OCDE) ;
+- estimer des modèles de régression linéaire n'intégrant qu'un terme constant et un terme temporel (pour tenir compte de la tendance) et utiliser ces modèles pour faire des prévisions à horizon 2023, 2024 et 2025. 
+
+On va ici utiliser la deuxième méthode. Autrement dit, chaque variable explicative $x_i$ sera associée à un modèle de régression linéaire de la forme :
+
+$$
+x_i = \beta_0 + \beta_1 \text{Date} + \varepsilon
+$$
+
+On précise qu'on considère comme variables explicatives les variables transformées utilisées dans le modèle 2 (ridge) :
+
+- $\ln \left( \frac{P_{\text{élec}}}{\text{IPC}} \right)$
+- $\ln (\text{DJU})$
+
+Par simplicité, on ne vérifie pas les hypothèses du modèle linéaire pour ces modèles de régression linéaire. On se contente d'obtenir des prévisions pour les années 2023, 2024 et 2025 en jugeant qu'on peut utiliser un modèle sur base du test de Student associés aux estimateurs du modèle$\footnote{Évidemment, si les hypothèses du modèle ne sont pas vérifiées, alors on ne peut pas se fier à la statistique de Student. Une étude approfondie permettrait d'aboutir à des résultats plus robustes mais on cherche ici seulement à obtenir des valeurs qui semblent cohérentes et avec lesquelles on pourra travailler.}$.
+
+### Modèle pour le prix de l'électricité
+
+On commence par estimer un modèle de régression linéaire pour la variable $\ln \left( \frac{P_{\text{élec}}}{\text{IPC}} \right)$ : 
+
+```{r}
+model_Pelec_IPC <- lm(
+    log(Pelec / IPC) ~ Date,
+    data = data
+)
+
+summary(model_Pelec_IPC) %>%
+    broom::tidy() %>%
+    mutate_at(
+        vars(estimate, std.error, statistic, p.value),
+        ~ ifelse(. > 100,
+            as.character(as.integer(round(., 0))),
+            as.character(signif(., 2))
+        )
+    ) %>%
+    rename(
+        Coefficient = term,
+        Estimation = estimate,
+        `Ecart type` = std.error,
+        `Statistique de test (Student t)` = statistic,
+        `p-value (Pr > |t|)` = p.value
+    ) %>%
+    mutate(Coefficient = case_when(
+        Coefficient == "(Intercept)" ~ "ß0",
+        Coefficient == "Date" ~ "ß1"
+    )) %>%
+    flextable::flextable() %>%
+    flextable::colformat_num(j = 5) %>%
+    flextable::autofit() %>%
+    flextable::set_caption("Résumé du modèle pour ln(Pelec/IPC)")
+```
+
+### Modèle pour la rigueur climatique
+
+On estime ensuite un modèle de régression linéaire pour la variable $\ln (\text{DJU})$ :
+
+```{r}
+model_DJU <- lm(
+    log(DJU) ~ Date,
+    data = data
+)
+
+summary(model_DJU) %>%
+    broom::tidy() %>%
+    mutate_at(
+        vars(estimate, std.error, statistic, p.value),
+        ~ ifelse(. > 100,
+            as.character(as.integer(round(., 0))),
+            as.character(signif(., 2))
+        )
+    ) %>%
+    rename(
+        Coefficient = term,
+        Estimation = estimate,
+        `Ecart type` = std.error,
+        `Statistique de test (Student t)` = statistic,
+        `p-value (Pr > |t|)` = p.value
+    ) %>%
+    mutate(Coefficient = case_when(
+        Coefficient == "(Intercept)" ~ "ß0",
+        Coefficient == "Date" ~ "ß1"
+    )) %>%
+    flextable::flextable() %>%
+    flextable::colformat_num(j = 5) %>%
+    flextable::autofit() %>%
+    flextable::set_caption("Résumé du modèle pour ln(DJU)")
+```
+
+Comme les coefficients ne semblent pas significatifs, on se contentera d'utiliser la valeur moyenne de $\ln (\text{DJU})$ pour faire des prévisions pour les années 2023, 2024 et 2025.
+
+L'indice DJU est en effet calculé comme un écart par rapport à une donnée de référence. Par conséquent, plus la température augmente, plus cet écart diminue et plus l'indice diminue. Nous aurions plutôt tendance à penser que les température ces dernières années auraient une tendance haussière due au changement climatique (et donc l'indice une tendance baissière). 
+
+Toutefois, cette diminution ne se traduit pas clairement sur notre graphique. En effet, nous devinons une tendance baissière mais qui demeure très faible par rapport à ce qui pourrait être attendu. Ceci pourrait être expliqué par la transformation successive des données de températures réelles en un indice qui lissé de surcroît par le logarithme. En effet, la transformation logarithmique a tendance à lisser les données et donc à diminuer les écarts entre les valeurs. C'est pourquoi nous avons une tendance baissière mais très faible, donc un modèle qui ne semble pas significatif.
+
+### Modèle pour la population
+
+La population est une variable explicative du modèle mais elle n'est pas transformée. On va donc estimer un modèle de régression linéaire pour la variable $\text{Pop}$ :
+
+```{r}
+model_Pop <- lm(
+    Pop ~ Date,
+    data = data
+)
+
+summary(model_Pop) %>%
+    broom::tidy() %>%
+    mutate_at(
+        vars(estimate, std.error, statistic, p.value),
+        ~ ifelse(. > 100,
+            as.character(as.integer(round(., 0))),
+            as.character(signif(., 2))
+        )
+    ) %>%
+    rename(
+        Coefficient = term,
+        Estimation = estimate,
+        `Ecart type` = std.error,
+        `Statistique de test (Student t)` = statistic,
+        `p-value (Pr > |t|)` = p.value
+    ) %>%
+    mutate(Coefficient = case_when(
+        Coefficient == "(Intercept)" ~ "ß0",
+        Coefficient == "Date" ~ "ß1"
+    )) %>%
+    flextable::flextable() %>%
+    flextable::colformat_num(j = 5) %>%
+    flextable::autofit() %>%
+    flextable::set_caption("Résumé du modèle pour Pop")
+```
+
+### Prévisions pour les variables explicatives
+
+On obtient alors les prévisions pour les variables explicatives :
+
+```{r}
+data_predict <- data.frame(
+    Date = c(2023, 2024, 2025)
+)
+
+data_predict <- data_predict %>%
+    mutate(
+        log_Pelec_IPC = predict(model_Pelec_IPC, newdata = data_predict),
+        log_DJU = mean(log(data$DJU)),
+        Pop = predict(model_Pop, newdata = data_predict)
+    )
+
+data_predict %>%
+    flextable::flextable() %>%
+    flextable::colformat_num(j = 2:3) %>%
+    flextable::autofit() %>%
+    flextable::set_caption("Prévisions pour les variables explicatives")
+```
+
+
+## Prévisions du modèle
+
+On peut alors faire des prévisions pour les années 2023, 2024 et 2025 :
+
+```{r}
+data_predict <- data_predict %>%
+    mutate(
+        Celec = Pop * exp(
+            predict(
+                ridge_model2_estimated,
+                newx = data_predict %>%
+                    select(
+                        log_Pelec_IPC,
+                        log_DJU
+                    ) %>% as.matrix()
+            ) %>% as.numeric()
+        )
+    )
+
+# plot results: change color of the line for the predictions
+data %>%
+    mutate(Celec = Celec) %>%
+    ggplot(aes(x = Date, y = Celec)) +
+    geom_line(aes(color = "Données réelles")) +
+    geom_line(
+        data = data.frame(
+            Date = data_predict$Date,
+            Celec = data_predict$Celec
+        ),
+        aes(x = Date, y = Celec, color = "Prédictions")
+    ) +
+    scale_color_manual(values = c("Données réelles" = "black", "Prédictions" = "red")) +
+    theme_minimal() +
+    labs(x = "Année", y = "Célec", title = "Visualisation de Célec avec les prévisions du modèle 2 (ridge)", color = "Légende") +
+    theme(
+        legend.position = c(0.8, 0.8),
+        legend.text = element_text(size = 15),
+        legend.title = element_text(size = 15),
+        plot.title = element_text(size = 20, face = "bold"),
+        axis.title = element_text(size = 15),
+        axis.text = element_text(size = 15),
+        axis.text.x = element_text(angle = 45, hjust = 1)
+    )
+```
+
+### Commentaires
+
+On peut observer que les prévisions semblent suivre la tendance des données réelles, avec une légère augmentation de la consommation électrique par rapport aux années post-covid (mais tout de même inférieure à la consommation électrique avant la crise sanitaire).
+
+On précise également que la régression ridge ne permet pas de construire directement d'intervalle de confiance pour les prévisions. En effet, la régression ridge est une méthode de régression pénalisée qui permet de réduire la variance des estimateurs mais qui ne permet pas de construire d'intervalle de confiance. Une solution aurait consisté à utiliser la méthode de bootstrap pour construire des intervalles de confiance mais on n'est pas parvenu à obtenir des résultats satisfaisants. En particulier, la méthode bootstrap risquait de surestimer les incertitudes en propageant celles faites sur les prévisions des variables explicatives. On a donc préféré ne pas utiliser cette méthode.
+
+
+<!-- --------------------------- PARTIE 5 ---------------------------  -->
+
+
+# Conclusion
+
+En conclusion, nous voyons que le modèle final que nous avons choisi d'analyser est très simple. Nous expliquons le prix de l'électricité par habitants français par deux variables. D'une part son prix ajusté par la tendance inflationniste et de l'autre un indice climatique afin de prendre en compte la variation de température qui effectivement impactera sans aucun doute la consommation électrique française. 
+
+Nous avons pu observer que les résultats obtenus représentent bel et bien ceux attendus : une élasticité de la demande en électricité négative et une corrélation positive quant à l'indice de rigueur climatique. Ces deux résultats possèdent une significativité statistique très forte mais subissent également le manque de validité des hypothèses que le modèle doit vérifier afin de conclure formellement la corrélation entre notre variables dépendante et les variables explicatives. 

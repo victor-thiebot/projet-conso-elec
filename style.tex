@@ -1,0 +1,47 @@
+%%%%%%% PACKAGES NECESSAIRES POUR LE DOCUMENT %%%%%%%
+
+\usepackage[french]{babel} % Langue
+
+\usepackage{graphicx, subcaption, float} % Figures
+\usepackage{tikz} % Figures Tikz
+\usepackage{pgfplots}
+\pgfplotsset{compat = newest}
+
+\usepackage{array} % Tableaux (tableau avec plusieurs lignes par cellule)
+\setlength{\extrarowheight}{5pt}
+\usepackage{diagbox} % Requis pour les tableaux (tableau avec des diagonales dans les cellules)
+
+\usepackage{amsmath}
+\usepackage{cases} % Systèmes d'équations
+
+\usepackage{fancyhdr} % Requis pour les en-têtes et pieds de page
+\usepackage{svg}
+\usepackage{pdflscape}
+
+\usepackage{hyperref, cleveref} % Pour les liens hypertextes
+\hypersetup{colorlinks = true, linkcolor = black, urlcolor = blue, citecolor = black} % Couleurs des liens hypertextes
+
+%%%%%%% AUTRES REGLAGES %%%%%%%
+\renewcommand*\familydefault{\sfdefault} % Sans serif font
+\captionsetup[subfigure]{subrefformat=simple,labelformat=simple, justification = centerlast}
+\renewcommand\thesubfigure{\arabic{subfigure}} % Pour les sous-figures
+
+% renew ref command so that a reference to a subfigure uses the following format : "Figure 1.1"
+\makeatletter
+\renewcommand{\p@subfigure}{\thefigure-}
+\makeatother
+
+\addto\captionsfrench{\def\tablename{Tableau}}
+
+
+
+%%%%%%% STYLE DES PAGES %%%%%%%
+\pagestyle{fancy}
+\fancyhead{}
+\fancyhead[C]{Rapport Économétrie}
+\fancyhead[L]{Partie \thesection}
+\fancyhead[R]{Emmanuel \textsc{Belfiore} - Victor \textsc{Thiébot}}
+\fancyfoot{}
+\fancyfoot[C]{\thepage}
+\fancyfoot[R]{\includegraphics[width = 2cm]{images/IFP_Logo.png}}
+\fancyfoot[L]{\includegraphics[width = 3 cm]{images/logo-paris-saclay.png}}
