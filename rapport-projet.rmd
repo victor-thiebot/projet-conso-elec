@@ -53,7 +53,7 @@ data <- data %>% rename(IPC = `IPC(base100=2015)`, PIB = PIB2014)
 
 # Introduction
 
-Le but du présent rapport$\footnote{Ce document est généré depuis un fichier écrit en R Markdown. Le code source est disponible sur [GitHub]()}$ est de comprendre l'évolution de la consommation électrique par habitants français en fonction de plusieurs facteurs qui pourraient à premier abord l'impacter. Nous allons effectivement nous pencher sur l'influence que pourrait avoir le prix unitaire du MWh, le PIB par habitants, l'indice des prix à la consommation, l'indice de rigueur climatique (indice de température calculé à partir de la température moyenne journalière et d'une température de référence). 
+Le but du présent rapport$\footnote{Ce document est généré depuis un fichier écrit en R Markdown. Le code source est disponible sur [GitHub](https://github.com/victor-thiebot/projet-conso-elec)}$ est de comprendre l'évolution de la consommation électrique par habitants français en fonction de plusieurs facteurs qui pourraient à premier abord l'impacter. Nous allons effectivement nous pencher sur l'influence que pourrait avoir le prix unitaire du MWh, le PIB par habitants, l'indice des prix à la consommation, l'indice de rigueur climatique (indice de température calculé à partir de la température moyenne journalière et d'une température de référence). 
 
 Afin de produire une analyse des plus cohérentes, nous allons dans un premier temps présenter un aperçu des données que nous allons traiter puis établir quelques statistiques générales accompagnées de visualisations graphiques. Par la suite, nous allons nous consacrer à l'analyse du modèle économétrique en nous souciant d'éliminer les principales sources d'erreurs auxquelles notre modèle pourrait être sujet. 
  
@@ -81,7 +81,7 @@ On dispose de données sur la consommation annuelle d'électricité en France de
 * `Pop1` : la population en France métropolitaine
 * `Pop2` : la population en France métropolitaine et dans les départements d'outre-mer
 * `Pelec` : le prix de l'électricité des ménages (en €/MWh)
-* `DJU` : l'indice de rigueur climatique ("DJU" pour "degrés jours unifiés", il s'agit d'un indice de température calculé à partir de la température moyenne journalière et d'une température de référence, ici 18$^\circ$C, plus d'informations sur [Wikipédia](https://fr.wikipedia.org/wiki/Degr%C3%A9_jour_unifi%C3%A9), données issues du [Ministère de la transition écologique, et de la cohésion des territoires](https://www.statistiques.developpement-durable.gouv.fr/indice-de-rigueur-degres-jours-unifies-aux-niveaux-national-regional-et-departemental)) 
+* `DJU` : l'indice de rigueur climatique ("DJU" pour "degrés jours unifiés", il s'agit d'un indice de température calculé à partir de la température moyenne journalière et d'une température de référence, ici 18$^\circ$C, plus d'informations sur [Wikipédia (cliquer ici)](https://fr.wikipedia.org/wiki/Degr%C3%A9_jour_unifi%C3%A9), données issues du [Ministère de la transition écologique, et de la cohésion des territoires (cliquer ici)](https://www.statistiques.developpement-durable.gouv.fr/indice-de-rigueur-degres-jours-unifies-aux-niveaux-national-regional-et-departemental)) 
 
 On peut visualiser les données à l'aide d'un tableau :
 
